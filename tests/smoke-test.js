@@ -119,10 +119,23 @@ async function flush() {
 
   listeners.actionClick();
   await flush();
+
   now = 3_723_650;
   intervalCallback();
   await flush();
-  assert.match(titleCalls.at(-1), /^01:02:03\.6/);
+  assert.match(titleCalls.at(-1), /^01:02:03 — Tiny Stopwatch — running/);
+  assert.doesNotMatch(titleCalls.at(-1), /03\.6/);
+  const runningTitleCount = titleCalls.length;
+
+  now = 3_723_950;
+  intervalCallback();
+  await flush();
+  assert.equal(titleCalls.length, runningTitleCount);
+
+  now = 3_724_050;
+  intervalCallback();
+  await flush();
+  assert.match(titleCalls.at(-1), /^01:02:04 — Tiny Stopwatch — running/);
   assert.equal(storage.stopwatchState.running, true);
 
   listeners.menuClick({ menuItemId: "theme-light" });
@@ -130,10 +143,12 @@ async function flush() {
   assert.equal(storage.theme, "light");
   assert.ok(iconCalls.length > 0);
 
+  now = 3_724_150;
   listeners.actionClick();
   await flush();
   assert.equal(storage.stopwatchState.running, false);
-  assert.equal(storage.stopwatchState.elapsedMs, 3_723_650);
+  assert.equal(storage.stopwatchState.elapsedMs, 3_724_150);
+  assert.match(titleCalls.at(-1), /^01:02:04\.1 — Tiny Stopwatch — stopped/);
 
   listeners.menuClick({ menuItemId: "reset-stopwatch" });
   await flush();

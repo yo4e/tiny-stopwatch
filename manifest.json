@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Tiny Stopwatch",
-  "version": "1.1.0",
-  "description": "クリックで開始・停止。右クリックでリセットと配色切替。アイコンに分・秒、ホバーに時・分・秒・0.1秒を表示します。",
+  "version": "1.1.1",
+  "description": "クリックで開始・停止。右クリックでリセットと配色切替。ホバーには計測中は時・分・秒、停止後は0.1秒まで表示します。",
   "minimum_chrome_version": "110",
   "permissions": [
     "alarms",

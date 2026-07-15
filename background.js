@@ -115,7 +115,7 @@ function iconTime(elapsedMs) {
   };
 }
 
-function formatDetailedTime(elapsedMs) {
+function detailedTimeParts(elapsedMs) {
   const totalTenths = Math.floor(elapsedMs / 100);
   const tenths = totalTenths % 10;
   const totalSeconds = Math.floor(totalTenths / 10);
@@ -124,10 +124,18 @@ function formatDetailedTime(elapsedMs) {
   const minutes = totalMinutes % 60;
   const hours = Math.floor(totalMinutes / 60);
 
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
-    2,
-    "0",
-  )}:${String(seconds).padStart(2, "0")}.${tenths}`;
+  return {
+    hours: String(hours).padStart(2, "0"),
+    minutes: String(minutes).padStart(2, "0"),
+    seconds: String(seconds).padStart(2, "0"),
+    tenths,
+  };
+}
+
+function formatHoverTime(elapsedMs, running) {
+  const parts = detailedTimeParts(elapsedMs);
+  const wholeSeconds = `${parts.hours}:${parts.minutes}:${parts.seconds}`;
+  return running ? wholeSeconds : `${wholeSeconds}.${parts.tenths}`;
 }
 
 async function saveState() {
@@ -285,11 +293,11 @@ async function render(force = false) {
   const now = Date.now();
   const elapsedMs = currentElapsedMs(now);
   const { minutes, seconds } = iconTime(elapsedMs);
-  const detailedTime = formatDetailedTime(elapsedMs);
+  const hoverTime = formatHoverTime(elapsedMs, state.running);
   const indicatorVisible =
     state.running && Math.floor(elapsedMs / 500) % 2 === 0;
   const iconKey = `${theme}:${state.running}:${minutes}:${seconds}:${indicatorVisible}`;
-  const titleKey = `${state.running}:${detailedTime}`;
+  const titleKey = `${state.running}:${hoverTime}`;
   const tasks = [];
 
   if (force || iconKey !== lastIconKey) {
@@ -323,7 +331,7 @@ async function render(force = false) {
     lastTitleKey = titleKey;
     tasks.push(
       chrome.action.setTitle({
-        title: `${detailedTime} — Tiny Stopwatch — ${
+        title: `${hoverTime} — Tiny Stopwatch — ${
           state.running ? "running; click to stop" : "stopped; click to start"
         }`,
       }),
