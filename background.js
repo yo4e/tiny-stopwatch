@@ -115,7 +115,7 @@ function iconTime(elapsedMs) {
   };
 }
 
-function detailedTimeParts(elapsedMs) {
+function formatDetailedTime(elapsedMs) {
   const totalTenths = Math.floor(elapsedMs / 100);
   const tenths = totalTenths % 10;
   const totalSeconds = Math.floor(totalTenths / 10);
@@ -124,18 +124,10 @@ function detailedTimeParts(elapsedMs) {
   const minutes = totalMinutes % 60;
   const hours = Math.floor(totalMinutes / 60);
 
-  return {
-    hours: String(hours).padStart(2, "0"),
-    minutes: String(minutes).padStart(2, "0"),
-    seconds: String(seconds).padStart(2, "0"),
-    tenths,
-  };
-}
-
-function formatHoverTime(elapsedMs, running) {
-  const parts = detailedTimeParts(elapsedMs);
-  const wholeSeconds = `${parts.hours}:${parts.minutes}:${parts.seconds}`;
-  return running ? wholeSeconds : `${wholeSeconds}.${parts.tenths}`;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0",
+  )}:${String(seconds).padStart(2, "0")}.${tenths}`;
 }
 
 async function saveState() {
@@ -293,11 +285,13 @@ async function render(force = false) {
   const now = Date.now();
   const elapsedMs = currentElapsedMs(now);
   const { minutes, seconds } = iconTime(elapsedMs);
-  const hoverTime = formatHoverTime(elapsedMs, state.running);
   const indicatorVisible =
     state.running && Math.floor(elapsedMs / 500) % 2 === 0;
   const iconKey = `${theme}:${state.running}:${minutes}:${seconds}:${indicatorVisible}`;
-  const titleKey = `${state.running}:${hoverTime}`;
+  const title = state.running
+    ? ""
+    : `${formatDetailedTime(elapsedMs)} — Tiny Stopwatch — stopped; click to start`;
+  const titleKey = state.running ? "running-without-tooltip" : title;
   const tasks = [];
 
   if (force || iconKey !== lastIconKey) {
@@ -329,13 +323,7 @@ async function render(force = false) {
 
   if (force || titleKey !== lastTitleKey) {
     lastTitleKey = titleKey;
-    tasks.push(
-      chrome.action.setTitle({
-        title: `${hoverTime} — Tiny Stopwatch — ${
-          state.running ? "running; click to stop" : "stopped; click to start"
-        }`,
-      }),
-    );
+    tasks.push(chrome.action.setTitle({ title }));
   }
 
   await Promise.all(tasks);
