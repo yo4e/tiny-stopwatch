@@ -183,7 +183,7 @@ function drawTwoDigits(context, value, x, y, scale) {
   drawDigit(context, second, x + 4 * scale, y, scale);
 }
 
-function makeIcon(size, minutes, seconds, running) {
+function makeIcon(size, minutes, seconds, running, indicatorVisible) {
   const canvas = new OffscreenCanvas(size, size);
   const context = canvas.getContext("2d");
 
@@ -203,11 +203,11 @@ function makeIcon(size, minutes, seconds, running) {
   drawTwoDigits(context, minutes, startX, startY, scale);
   drawTwoDigits(context, seconds, startX, startY + rowHeight + gap, scale);
 
-  if (running) {
+  if (indicatorVisible) {
     const indicatorSize = Math.max(1, Math.floor(size / 16));
     context.fillRect(
       size - indicatorSize * 2,
-      indicatorSize,
+      size - indicatorSize * 2,
       indicatorSize,
       indicatorSize,
     );
@@ -221,10 +221,14 @@ async function render(force = false) {
     return;
   }
 
-  const totalSeconds = displayedSeconds();
+  const now = Date.now();
+  const elapsedMs = currentElapsedMs(now);
+  const totalSeconds = displayedSeconds(now);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  const renderKey = `${state.running}:${totalSeconds}`;
+  const indicatorVisible =
+    state.running && Math.floor(elapsedMs / 500) % 2 === 0;
+  const renderKey = `${state.running}:${totalSeconds}:${indicatorVisible}`;
 
   if (!force && renderKey === lastRenderedKey) {
     return;
@@ -235,8 +239,8 @@ async function render(force = false) {
   await Promise.all([
     chrome.action.setIcon({
       imageData: {
-        16: makeIcon(16, minutes, seconds, state.running),
-        32: makeIcon(32, minutes, seconds, state.running),
+        16: makeIcon(16, minutes, seconds, state.running, indicatorVisible),
+        32: makeIcon(32, minutes, seconds, state.running, indicatorVisible),
       },
     }),
     chrome.action.setTitle({
