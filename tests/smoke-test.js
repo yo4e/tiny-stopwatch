@@ -119,15 +119,10 @@ async function flush() {
 
   listeners.actionClick();
   await flush();
-
-  now = 3_723_650;
-  intervalCallback();
-  await flush();
-  assert.match(titleCalls.at(-1), /^01:02:03 — Tiny Stopwatch — running/);
-  assert.doesNotMatch(titleCalls.at(-1), /03\.6/);
+  assert.equal(titleCalls.at(-1), "");
   const runningTitleCount = titleCalls.length;
 
-  now = 3_723_950;
+  now = 3_723_650;
   intervalCallback();
   await flush();
   assert.equal(titleCalls.length, runningTitleCount);
@@ -135,12 +130,13 @@ async function flush() {
   now = 3_724_050;
   intervalCallback();
   await flush();
-  assert.match(titleCalls.at(-1), /^01:02:04 — Tiny Stopwatch — running/);
+  assert.equal(titleCalls.length, runningTitleCount);
   assert.equal(storage.stopwatchState.running, true);
 
   listeners.menuClick({ menuItemId: "theme-light" });
   await flush();
   assert.equal(storage.theme, "light");
+  assert.equal(titleCalls.at(-1), "");
   assert.ok(iconCalls.length > 0);
 
   now = 3_724_150;
