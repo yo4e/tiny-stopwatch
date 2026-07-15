@@ -1,18 +1,28 @@
 {
   "manifest_version": 3,
   "name": "Tiny Stopwatch",
-  "version": "1.0.0",
-  "description": "A tiny stopwatch that lives in your Chrome toolbar.",
+  "version": "1.1.0",
+  "description": "クリックで開始・停止。右クリックでリセットと配色切替。アイコンに分・秒、ホバーに時・分・秒・0.1秒を表示します。",
   "minimum_chrome_version": "110",
   "permissions": [
     "alarms",
     "contextMenus",
     "storage"
   ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Tiny Stopwatch — 00:00"
+    "default_title": "00:00:00.0 — Tiny Stopwatch — stopped; click to start",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
   }
 }
