@@ -1,12 +1,29 @@
 const STORAGE_KEY = "stopwatchState";
+const THEME_KEY = "theme";
 const RESET_MENU_ID = "reset-stopwatch";
+const THEME_MENU_ID = "theme";
+const THEME_DARK_MENU_ID = "theme-dark";
+const THEME_LIGHT_MENU_ID = "theme-light";
 const HEARTBEAT_ALARM = "stopwatch-heartbeat";
-const HOUR_MS = 60 * 60 * 1000;
+const DEFAULT_THEME = "dark";
 
 const DEFAULT_STATE = Object.freeze({
   running: false,
   elapsedMs: 0,
   startedAt: null,
+});
+
+const THEMES = Object.freeze({
+  dark: Object.freeze({
+    background: "#111318",
+    running: "#7CFF9B",
+    stopped: "#AEB4BF",
+  }),
+  light: Object.freeze({
+    background: "#F3F4F6",
+    running: "#087A3E",
+    stopped: "#3E4652",
+  }),
 });
 
 const DIGITS = Object.freeze({
@@ -23,9 +40,11 @@ const DIGITS = Object.freeze({
 });
 
 let state = null;
+let theme = DEFAULT_THEME;
 let initializePromise = null;
 let tickerId = null;
-let lastRenderedKey = "";
+let lastIconKey = "";
+let lastTitleKey = "";
 let operationQueue = Promise.resolve();
 
 function enqueue(operation) {
@@ -41,7 +60,7 @@ function normalizeState(value) {
   const running = value.running === true;
   const elapsedMs =
     Number.isFinite(value.elapsedMs) && value.elapsedMs >= 0
-      ? value.elapsedMs % HOUR_MS
+      ? value.elapsedMs
       : 0;
   const startedAt =
     running && Number.isFinite(value.startedAt) ? value.startedAt : null;
@@ -53,11 +72,16 @@ function normalizeState(value) {
   return { running, elapsedMs, startedAt };
 }
 
+function normalizeTheme(value) {
+  return Object.hasOwn(THEMES, value) ? value : DEFAULT_THEME;
+}
+
 async function ensureInitialized() {
   if (!initializePromise) {
     initializePromise = (async () => {
-      const stored = await chrome.storage.local.get(STORAGE_KEY);
+      const stored = await chrome.storage.local.get([STORAGE_KEY, THEME_KEY]);
       state = normalizeState(stored[STORAGE_KEY]);
+      theme = normalizeTheme(stored[THEME_KEY]);
 
       if (state.running) {
         ensureHeartbeat();
@@ -77,24 +101,41 @@ async function ensureInitialized() {
 
 function currentElapsedMs(now = Date.now()) {
   if (!state.running) {
-    return state.elapsedMs % HOUR_MS;
+    return state.elapsedMs;
   }
 
-  return (state.elapsedMs + Math.max(0, now - state.startedAt)) % HOUR_MS;
+  return state.elapsedMs + Math.max(0, now - state.startedAt);
 }
 
-function displayedSeconds(now = Date.now()) {
-  return Math.floor(currentElapsedMs(now) / 1000) % 3600;
+function iconTime(elapsedMs) {
+  const totalSeconds = Math.floor(elapsedMs / 1000);
+  return {
+    minutes: Math.floor(totalSeconds / 60) % 60,
+    seconds: totalSeconds % 60,
+  };
 }
 
-function formatTime(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60);
+function formatDetailedTime(elapsedMs) {
+  const totalTenths = Math.floor(elapsedMs / 100);
+  const tenths = totalTenths % 10;
+  const totalSeconds = Math.floor(totalTenths / 10);
   const seconds = totalSeconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const hours = Math.floor(totalMinutes / 60);
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0",
+  )}:${String(seconds).padStart(2, "0")}.${tenths}`;
 }
 
 async function saveState() {
   await chrome.storage.local.set({ [STORAGE_KEY]: state });
+}
+
+async function saveTheme() {
+  await chrome.storage.local.set({ [THEME_KEY]: theme });
 }
 
 function ensureHeartbeat() {
@@ -112,7 +153,7 @@ function startTicker() {
 
   tickerId = setInterval(() => {
     void render();
-  }, 250);
+  }, 100);
 }
 
 function stopTicker() {
@@ -160,6 +201,19 @@ async function reset() {
   await render(true);
 }
 
+async function setTheme(nextTheme) {
+  await ensureInitialized();
+
+  const normalizedTheme = normalizeTheme(nextTheme);
+  if (theme === normalizedTheme) {
+    return;
+  }
+
+  theme = normalizedTheme;
+  await saveTheme();
+  await render(true);
+}
+
 function drawDigit(context, digit, x, y, scale) {
   const pattern = DIGITS[digit];
 
@@ -183,12 +237,19 @@ function drawTwoDigits(context, value, x, y, scale) {
   drawDigit(context, second, x + 4 * scale, y, scale);
 }
 
-function makeIcon(size, minutes, seconds, running, indicatorVisible) {
+function makeIcon(
+  size,
+  minutes,
+  seconds,
+  running,
+  indicatorVisible,
+  palette,
+) {
   const canvas = new OffscreenCanvas(size, size);
   const context = canvas.getContext("2d");
 
   context.clearRect(0, 0, size, size);
-  context.fillStyle = "#111318";
+  context.fillStyle = palette.background;
   context.fillRect(0, 0, size, size);
 
   const scale = size >= 32 ? Math.max(2, Math.floor(size / 16)) : 1;
@@ -199,7 +260,7 @@ function makeIcon(size, minutes, seconds, running, indicatorVisible) {
   const startX = Math.floor((size - digitsWidth) / 2);
   const startY = Math.floor((size - blockHeight) / 2);
 
-  context.fillStyle = running ? "#7CFF9B" : "#AEB4BF";
+  context.fillStyle = running ? palette.running : palette.stopped;
   drawTwoDigits(context, minutes, startX, startY, scale);
   drawTwoDigits(context, seconds, startX, startY + rowHeight + gap, scale);
 
@@ -223,32 +284,53 @@ async function render(force = false) {
 
   const now = Date.now();
   const elapsedMs = currentElapsedMs(now);
-  const totalSeconds = displayedSeconds(now);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
+  const { minutes, seconds } = iconTime(elapsedMs);
+  const detailedTime = formatDetailedTime(elapsedMs);
   const indicatorVisible =
     state.running && Math.floor(elapsedMs / 500) % 2 === 0;
-  const renderKey = `${state.running}:${totalSeconds}:${indicatorVisible}`;
+  const iconKey = `${theme}:${state.running}:${minutes}:${seconds}:${indicatorVisible}`;
+  const titleKey = `${state.running}:${detailedTime}`;
+  const tasks = [];
 
-  if (!force && renderKey === lastRenderedKey) {
-    return;
+  if (force || iconKey !== lastIconKey) {
+    lastIconKey = iconKey;
+    const palette = THEMES[theme];
+    tasks.push(
+      chrome.action.setIcon({
+        imageData: {
+          16: makeIcon(
+            16,
+            minutes,
+            seconds,
+            state.running,
+            indicatorVisible,
+            palette,
+          ),
+          32: makeIcon(
+            32,
+            minutes,
+            seconds,
+            state.running,
+            indicatorVisible,
+            palette,
+          ),
+        },
+      }),
+    );
   }
 
-  lastRenderedKey = renderKey;
+  if (force || titleKey !== lastTitleKey) {
+    lastTitleKey = titleKey;
+    tasks.push(
+      chrome.action.setTitle({
+        title: `${detailedTime} — Tiny Stopwatch — ${
+          state.running ? "running; click to stop" : "stopped; click to start"
+        }`,
+      }),
+    );
+  }
 
-  await Promise.all([
-    chrome.action.setIcon({
-      imageData: {
-        16: makeIcon(16, minutes, seconds, state.running, indicatorVisible),
-        32: makeIcon(32, minutes, seconds, state.running, indicatorVisible),
-      },
-    }),
-    chrome.action.setTitle({
-      title: `Tiny Stopwatch — ${formatTime(totalSeconds)} — ${
-        state.running ? "running; click to stop" : "stopped; click to start"
-      }`,
-    }),
-  ]);
+  await Promise.all(tasks);
 }
 
 function installContextMenu() {
@@ -258,17 +340,46 @@ function installContextMenu() {
       title: "Reset to 00:00",
       contexts: ["action"],
     });
+    chrome.contextMenus.create({
+      id: "menu-separator",
+      type: "separator",
+      contexts: ["action"],
+    });
+    chrome.contextMenus.create({
+      id: THEME_MENU_ID,
+      title: "Theme",
+      contexts: ["action"],
+    });
+    chrome.contextMenus.create({
+      id: THEME_DARK_MENU_ID,
+      parentId: THEME_MENU_ID,
+      type: "radio",
+      title: "Dark",
+      checked: theme === "dark",
+      contexts: ["action"],
+    });
+    chrome.contextMenus.create({
+      id: THEME_LIGHT_MENU_ID,
+      parentId: THEME_MENU_ID,
+      type: "radio",
+      title: "Light",
+      checked: theme === "light",
+      contexts: ["action"],
+    });
   });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  installContextMenu();
-  void ensureInitialized();
-});
+function initializeAndInstallMenu() {
+  void enqueue(async () => {
+    await ensureInitialized();
+    installContextMenu();
+  }).catch((error) => {
+    console.error("Tiny Stopwatch failed to install its menu.", error);
+  });
+}
 
-chrome.runtime.onStartup.addListener(() => {
-  void ensureInitialized();
-});
+chrome.runtime.onInstalled.addListener(initializeAndInstallMenu);
+chrome.runtime.onStartup.addListener(initializeAndInstallMenu);
 
 chrome.action.onClicked.addListener(() => {
   void enqueue(toggle).catch((error) => {
@@ -280,6 +391,20 @@ chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === RESET_MENU_ID) {
     void enqueue(reset).catch((error) => {
       console.error("Tiny Stopwatch failed to reset.", error);
+    });
+    return;
+  }
+
+  if (info.menuItemId === THEME_DARK_MENU_ID) {
+    void enqueue(() => setTheme("dark")).catch((error) => {
+      console.error("Tiny Stopwatch failed to select the dark theme.", error);
+    });
+    return;
+  }
+
+  if (info.menuItemId === THEME_LIGHT_MENU_ID) {
+    void enqueue(() => setTheme("light")).catch((error) => {
+      console.error("Tiny Stopwatch failed to select the light theme.", error);
     });
   }
 });
